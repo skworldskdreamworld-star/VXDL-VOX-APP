@@ -217,7 +217,7 @@ function ImageDisplay({ images, isLoading, error, prompt, onUpscale, upscalingSt
                 )}
               </div>
 
-              {imageInfo.upscaledTo !== '4K' && (
+              {imageInfo.upscaledTo !== '4x' && (
                 <div className="relative">
                     <button
                         onClick={() => setOpenUpscaleMenu(openUpscaleMenu === index ? null : index)}
@@ -227,7 +227,8 @@ function ImageDisplay({ images, isLoading, error, prompt, onUpscale, upscalingSt
                         disabled={isCurrentlyUpscaling || isLoading || disabled}
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0zM4 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H4z" clipRule="evenodd" />
+                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                          <path fillRule="evenodd" d="M.458 10C3.732 4.943 9.522 3 10 3s6.268 1.943 9.542 7c-3.274 5.057-9.064 7-9.542 7S3.732 15.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                         </svg>
                     </button>
                     {openUpscaleMenu === index && (
@@ -236,22 +237,22 @@ function ImageDisplay({ images, isLoading, error, prompt, onUpscale, upscalingSt
                         className="absolute right-0 mt-2 w-36 bg-gray-900/90 backdrop-blur-md border border-white/20 rounded-lg p-2 animate-fade-in origin-top-right z-10"
                         >
                         <ul className="space-y-1">
-                            {imageInfo.upscaledTo !== '2K' && (
+                            {imageInfo.upscaledTo !== '2x' && (
                             <li>
                                 <button
-                                onClick={() => { onUpscale(index, '2K'); setOpenUpscaleMenu(null); }}
+                                onClick={() => { onUpscale(index, '2x'); setOpenUpscaleMenu(null); }}
                                 className="w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors text-gray-300 hover:bg-white/10"
                                 >
-                                {t('upscale2K')}
+                                {t('upscale2x')}
                                 </button>
                             </li>
                             )}
                             <li>
                             <button
-                                onClick={() => { onUpscale(index, '4K'); setOpenUpscaleMenu(null); }}
+                                onClick={() => { onUpscale(index, '4x'); setOpenUpscaleMenu(null); }}
                                 className="w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors text-gray-300 hover:bg-white/10"
                             >
-                                {t('upscale4K')}
+                                {t('upscale4x')}
                             </button>
                             </li>
                         </ul>

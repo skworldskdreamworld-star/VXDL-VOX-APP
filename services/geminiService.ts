@@ -216,8 +216,10 @@ export const generateImagesFromPrompt = async (
   settings: ImageSettings,
   vxdlUltraSystemInstruction: string | undefined,
   aspectRatioTextTemplate: string,
-): Promise<string[]> => {
+  seed?: number,
+): Promise<{ images: string[], seed: number }> => {
   try {
+      const usedSeed = seed ?? Math.floor(Math.random() * 2147483647);
       if (settings.model === 'gemini-2.5-flash-image-preview') {
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image-preview',
@@ -227,6 +229,7 @@ export const generateImagesFromPrompt = async (
               config: {
                   responseModalities: [Modality.IMAGE, Modality.TEXT],
                   ...(vxdlUltraSystemInstruction && { systemInstruction: vxdlUltraSystemInstruction }),
+                  seed: usedSeed,
               },
           });
 
@@ -248,7 +251,7 @@ export const generateImagesFromPrompt = async (
               }
               throw new Error("VXDL 1 ULTRA: The model did not return an image. This might be due to safety policies.");
           }
-          return [images[0]];
+          return { images: [images[0]], seed: usedSeed };
       } else {
           const response = await ai.models.generateImages({
               model: 'imagen-4.0-generate-001',
@@ -256,16 +259,18 @@ export const generateImagesFromPrompt = async (
               config: {
                   numberOfImages: 1,
                   aspectRatio: settings.aspectRatio,
+                  seed: usedSeed,
               },
           });
 
           if (!response.generatedImages || response.generatedImages.length === 0) {
-              const modelName = settings.model === 'vxdl-1-fused' ? "VXDL 1" : "Imagen 4 Pro";
+              // FIX: Corrected model name in error message for consistency.
+              const modelName = settings.model === 'imagen-4.0-generate-001' ? "Imagen 4 Pro" : "VXDL 1 (Fused)";
               throw new Error(`${modelName}: The model did not return an image. This might be due to safety policies.`);
           }
           
           const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
-          return [`data:image/png;base64,${base64ImageBytes}`];
+          return { images: [`data:image/png;base64,${base64ImageBytes}`], seed: usedSeed };
       }
   } catch (error) {
       throw new Error(parseGeminiError(error));
@@ -275,9 +280,11 @@ export const generateImagesFromPrompt = async (
 export const editImageFromPrompt = async (
   masterPrompt: string,
   base64ImageData: string,
-  _mimeType: string // No longer used, will be derived from resized image
-): Promise<string[]> => {
+  _mimeType: string, // No longer used, will be derived from resized image
+  seed?: number,
+): Promise<{images: string[], seed: number}> => {
   try {
+    const usedSeed = seed ?? Math.floor(Math.random() * 2147483647);
     const { resizedBase64, mimeType } = await resizeImage(base64ImageData);
     const pureBase64 = resizedBase64.substring(resizedBase64.indexOf(',') + 1);
 
@@ -296,6 +303,7 @@ export const editImageFromPrompt = async (
       },
       config: {
         responseModalities: [Modality.IMAGE, Modality.TEXT],
+        seed: usedSeed,
       },
     });
 
@@ -318,7 +326,7 @@ export const editImageFromPrompt = async (
       throw new Error("The model did not return an edited image. It may have refused the request due to safety policies or an unclear prompt.");
     }
 
-    return images;
+    return { images, seed: usedSeed };
   } catch (error) {
     throw new Error(parseGeminiError(error));
   }
@@ -786,6 +794,34 @@ export const analyzeImageStyle = async (
       throw new Error("The model could not analyze the image style.");
     }
     return styleKeywords;
+  } catch (error) {
+    throw new Error(parseGeminiError(error));
+  }
+};
+
+export const generateVisualPromptFromImage = async (
+  base64ImageData: string,
+  instruction: string,
+): Promise<string> => {
+  try {
+    const { resizedBase64, mimeType } = await resizeImage(base64ImageData, 1024, 1024);
+    const pureBase64 = resizedBase64.substring(resizedBase64.indexOf(',') + 1);
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [
+          { inlineData: { data: pureBase64, mimeType: mimeType } },
+          { text: instruction },
+        ],
+      },
+    });
+
+    const visualPrompt = response.text.trim();
+    if (!visualPrompt) {
+      throw new Error("The model could not generate a visual prompt from the image.");
+    }
+    return visualPrompt;
   } catch (error) {
     throw new Error(parseGeminiError(error));
   }

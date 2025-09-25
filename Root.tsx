@@ -6,6 +6,7 @@ import BridgePage from './components/BridgePage';
 import VoxPage from './components/VoxPage';
 import COSPage from './components/COSPage';
 import VXPLPage from './components/VXPLPage';
+import VXOGPage from './components/VXOGPage';
 import Header from './components/Header';
 import AnimatedBackground from './components/AnimatedBackground';
 import SessionTimer from './components/SessionTimer';
@@ -14,7 +15,7 @@ import { LanguageProvider } from './hooks/useTranslations';
 
 // Reduced history size to prevent localStorage quota errors and improve performance.
 const MAX_HISTORY_ITEMS = 10;
-const GUEST_SESSION_DURATION = 3600; // 1 hour in seconds
+const GUEST_SESSION_DURATION = 1800; // 30 minutes in seconds
 
 function Root() {
   const [appState, setAppState] = useState<'landing' | 'login' | 'bridge' | 'app'>('landing');
@@ -49,8 +50,7 @@ function Root() {
           }
           setUser(storedUser);
           setSessionTime(GUEST_SESSION_DURATION - elapsedTime);
-          setView('vox');
-          setAppState('app');
+          setAppState('bridge');
         } else if (storedUser?.type === 'member') {
           setUser(storedUser);
           setAppState('bridge'); // Members go to the bridge
@@ -155,9 +155,6 @@ function Root() {
   };
   
   const handleSetView = (newView: AppView) => {
-    if (user?.type === 'guest' && (newView === 'vxdl' || newView === 'vxpl' || newView === 'cos')) {
-      return; // Prevent guest from switching to restricted views
-    }
     setView(newView);
   };
 
@@ -167,10 +164,7 @@ function Root() {
   };
   
   const handleGoToBridge = () => {
-    if (user?.type === 'member') {
-      setAppState('bridge');
-    }
-    // Guests cannot go to bridge, they stay in VOX.
+    setAppState('bridge');
   };
 
   const handleLoginSuccess = (userType: 'member' | 'guest') => {
@@ -187,13 +181,7 @@ function Root() {
     }
     
     setUser(newUser);
-
-    if (userType === 'guest') {
-        setView('vox');
-        setAppState('app');
-    } else {
-        setAppState('bridge');
-    }
+    setAppState('bridge');
   };
 
   const historyProps = {
@@ -206,31 +194,37 @@ function Root() {
   const renderMainAppView = () => {
     switch(view) {
       case 'vxdl':
-        return user?.type === 'member' ? (
+        return (
           <div className="p-4 md:p-8 animate-fade-in pt-40 md:pt-48">
             <div className="max-w-7xl mx-auto">
               <App {...historyProps} />
             </div>
           </div>
-        ) : null;
+        );
       case 'vox':
         return (
           <div className="animate-fade-in">
              <VoxPage {...historyProps} deleteHistoryItems={deleteHistoryItems} />
           </div>
         );
+      case 'vxog':
+        return (
+          <div className="animate-fade-in">
+            <VXOGPage />
+          </div>
+        );
       case 'cos':
-         return user?.type === 'member' ? (
+         return (
           <div className="p-4 md:p-8 animate-fade-in pt-28 md:pt-32">
              <COSPage />
           </div>
-        ) : null;
+        );
       case 'vxpl':
-         return user?.type === 'member' ? (
+         return (
           <div className="p-4 md:p-8 animate-fade-in pt-28 md:pt-32">
              <VXPLPage />
           </div>
-        ) : null;
+        );
       default:
         return null;
     }
@@ -250,7 +244,7 @@ function Root() {
       );
     }
     
-    if (appState === 'bridge' && user.type === 'member') {
+    if (appState === 'bridge') {
       return (
         <>
           <AnimatedBackground />

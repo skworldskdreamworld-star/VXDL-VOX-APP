@@ -1,10 +1,15 @@
+
 import React from 'react';
 import Spinner from './Spinner';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+// FIX: Switched from an interface extending React.ButtonHTMLAttributes to a type alias
+// using an intersection (&). This is a more robust way to combine component-specific props
+// with all standard HTML button attributes, resolving type errors where properties like
+// 'onClick', 'type', and 'disabled' were not recognized.
+type ButtonProps = {
   isLoading?: boolean;
   children: React.ReactNode;
-}
+} & React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 function Button({ isLoading = false, children, ...props }: ButtonProps) {
   return (

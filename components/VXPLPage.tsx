@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useMemo } from 'react';
 import { vxplTemplates, PromptTemplate } from '../vxplTemplates';
 import { useTranslations } from '../hooks/useTranslations';
@@ -17,7 +12,9 @@ interface TemplateCardProps {
   animationDelay: string;
 }
 
-function TemplateCard({ template, isExpanded, onToggle, animationDelay }: TemplateCardProps) {
+// FIX: Changed to a const arrow function typed with React.FC. This correctly types the
+// component to accept special React props like 'key' when used in a list, resolving a TypeScript error.
+const TemplateCard: React.FC<TemplateCardProps> = ({ template, isExpanded, onToggle, animationDelay }) => {
   const { t } = useTranslations();
   const [isCopied, setIsCopied] = useState(false);
   

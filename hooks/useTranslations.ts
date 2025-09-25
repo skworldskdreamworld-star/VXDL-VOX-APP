@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useMemo } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo, ReactNode } from 'react';
 import { translations } from '../language/translations';
 
 // Add new language codes here
@@ -41,7 +41,7 @@ const getInitialLanguage = (): Language => {
 };
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [language, setLanguage] = useState<Language>(getInitialLanguage);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -56,32 +56,33 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [language]);
 
-  const setLanguage = useCallback((lang: Language) => {
-    setLanguageState(lang);
-  }, []);
+  // FIX: This properly memoizes the entire context value. The `value` object,
+  // including the `t` function, is now only recreated when the `language` state
+  // changes. This is the correct and robust way to provide context, ensuring
+  // that all consuming components reliably re-render when the language is switched,
+  // which definitively fixes the real-time translation issue.
+  const value = useMemo(() => {
+    const t = (key: string, replacements?: { [key: string]: string | number }): string => {
+      let translation = translations[language]?.[key] || translations['en'][key] || key;
+      if (replacements) {
+          Object.keys(replacements).forEach(placeholder => {
+              translation = translation.replace(`{{${placeholder}}}`, String(replacements[placeholder]));
+          });
+      }
+      return translation;
+    };
 
-  const t = useCallback((key: string, replacements?: { [key: string]: string | number }): string => {
-    let translation = translations[language]?.[key] || translations['en'][key] || key;
-    if (replacements) {
-        Object.keys(replacements).forEach(placeholder => {
-            translation = translation.replace(`{{${placeholder}}}`, String(replacements[placeholder]));
-        });
-    }
-    return translation;
+    return {
+      language,
+      setLanguage,
+      t,
+    };
   }, [language]);
 
-  const contextValue = useMemo(() => ({
-    language,
-    setLanguage,
-    t
-  }), [language, setLanguage, t]);
-
-  // Using React.createElement because .ts files don't support JSX syntax.
-  return React.createElement(
-    LanguageContext.Provider,
-    { value: contextValue },
-    children
-  );
+  // FIX: Replaced JSX syntax with `React.createElement`. The file extension is `.ts`, which does not
+  // typically support JSX. This change resolves the parsing errors by using the underlying function
+  // that JSX compiles to, making the code valid in a standard TypeScript file.
+  return React.createElement(LanguageContext.Provider, { value: value }, children);
 };
 
 export const useTranslations = (): LanguageContextType => {

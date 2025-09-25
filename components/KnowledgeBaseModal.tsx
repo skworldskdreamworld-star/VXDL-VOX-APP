@@ -89,6 +89,7 @@ function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps) {
           </FeatureSection>
 
           <FeatureSection title={t('kbFineTuningTitle')}>
+            {renderHTML('kbVxogDesc')}
             {renderHTML('kbFineTuningDescSmartTools')}
             {renderHTML('kbFineTuningDescNegative')}
             {renderHTML('kbFineTuningDescIntensity')}

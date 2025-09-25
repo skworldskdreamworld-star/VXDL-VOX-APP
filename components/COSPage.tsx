@@ -65,8 +65,11 @@ const COSPage = () => {
         
         const result = await editImageFromPrompt(masterPrompt, inputImage.base64, inputImage.mimeType);
         
-        if (result && result.length > 0) {
-          newImages.push(result[0]);
+        // FIX: The `editImageFromPrompt` function returns an object `{ images: string[], seed: number }`.
+        // The check is updated to access `result.images` and its `length` property,
+        // which fixes the type error.
+        if (result && result.images && result.images.length > 0) {
+          newImages.push(result.images[0]);
           setGeneratedImages([...newImages]);
           setTokenUsage(prev => prev + estimatedTokensPerImage);
         } else {

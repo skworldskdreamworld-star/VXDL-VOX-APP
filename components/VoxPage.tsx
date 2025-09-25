@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { generateImagesFromPrompt, editImageFromPrompt, upscaleImage, combineImages, generateCreativePrompt, generateVariations, reframeImage, generateVideo, changeImageViewpoint, analyzeImageForSuggestions, suggestNegativePrompt, analyzeImageStyle, inpaintImage } from '../services/geminiService';
+import { generateImagesFromPrompt, editImageFromPrompt, upscaleImage, combineImages, generateCreativePrompt, generateVariations, reframeImage, generateVideo, changeImageViewpoint, analyzeImageForSuggestions, suggestNegativePrompt, analyzeImageStyle, inpaintImage, generateVisualPromptFromImage } from '../services/geminiService';
 import { ImageSettings, GenerationModel, AspectRatio, HistoryItem, ImageInfo, VoxSettings, UpscaleResolution, GenerationMode } from '../types';
 import { AVAILABLE_MODELS, STYLE_PRESETS, DETAIL_LEVELS, ASPECT_RATIOS } from '../constants';
 import Spinner from './Spinner';
@@ -30,6 +30,8 @@ interface VoxState {
   selectedAspectRatio: AspectRatio | 'auto';
   imageDimensions: { width: number, height: number } | null;
   currentVideoUrl: string | null;
+  seed: string;
+  lastSeed: number | null;
 }
 
 
@@ -125,7 +127,10 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
   const [detailIntensity, setDetailIntensity] = useState(3);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio | 'auto'>('auto');
   const [styleReferenceImage, setStyleReferenceImage] = useState<{ base64: string; mimeType: string; } | null>(null);
-  
+  const [seed, setSeed] = useState<string>('');
+  const [lastSeed, setLastSeed] = useState<number | null>(null);
+  const [isSeedCopied, setIsSeedCopied] = useState(false);
+
   // Async Action State
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [isGeneratingVariations, setIsGeneratingVariations] = useState(false);
@@ -138,7 +143,12 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
   const [isAnalyzingStyle, setIsAnalyzingStyle] = useState(false);
   const [isSuggestingNegatives, setIsSuggestingNegatives] = useState(false);
   const [isAnalyzingScene, setIsAnalyzingScene] = useState(false);
+  const [isGeneratingVxog, setIsGeneratingVxog] = useState(false);
   
+  // VXOG State
+  const [vxogPrompt, setVxogPrompt] = useState<string | null>(null);
+  const [isVxogCopied, setIsVxogCopied] = useState(false);
+
   // Canvas Transform State
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -196,8 +206,9 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
   const captureState = useCallback((): VoxState => ({
     prompt, bgUrl1, bgUrl2, isBg1Active, currentImage, activeHistoryItemId,
     uploadedImages, negativePrompt, activeStyles: Array.from(activeStyles),
-    detailIntensity, selectedAspectRatio, imageDimensions, currentVideoUrl
-  }), [prompt, bgUrl1, bgUrl2, isBg1Active, currentImage, activeHistoryItemId, uploadedImages, negativePrompt, activeStyles, detailIntensity, selectedAspectRatio, imageDimensions, currentVideoUrl]);
+    detailIntensity, selectedAspectRatio, imageDimensions, currentVideoUrl,
+    seed, lastSeed,
+  }), [prompt, bgUrl1, bgUrl2, isBg1Active, currentImage, activeHistoryItemId, uploadedImages, negativePrompt, activeStyles, detailIntensity, selectedAspectRatio, imageDimensions, currentVideoUrl, seed, lastSeed]);
 
   const restoreState = useCallback((state: VoxState | null) => {
     if (!state) return;
@@ -214,6 +225,8 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
     setSelectedAspectRatio(state.selectedAspectRatio);
     setImageDimensions(state.imageDimensions);
     setCurrentVideoUrl(state.currentVideoUrl);
+    setSeed(state.seed);
+    setLastSeed(state.lastSeed);
     resetTransform();
     setIsPanelExpanded(!!state.bgUrl1 || !!state.bgUrl2 || !!state.currentVideoUrl);
   }, []);
@@ -316,7 +329,7 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
   
   const constructFinalPrompt = () => { let finalPrompt = prompt; const styleKeywords = [...activeStyles].map(name => STYLE_PRESETS.find(p => p.name === name)?.keywords || '').join(', '); if (styleKeywords) finalPrompt += `, ${styleKeywords}`; const detailKeywords = DETAIL_LEVELS[detailIntensity]; if (detailKeywords) finalPrompt += `, ${detailKeywords}`; if (negativePrompt.trim()) finalPrompt += ` --no ${negativePrompt.trim()}`; return finalPrompt; };
   // FIX: Replaced MAX_HISTORY_IMAGES with MAX_HISTORY_ITEMS to match the defined constant.
-  const createAndStoreHistoryItem = (thumbnail: ImageInfo[], userPrompt: string, settings: ImageSettings, mode: GenerationMode, videoSrc: string | null = null) => { if (history.length >= MAX_HISTORY_ITEMS) { setIsHistoryFullWarningVisible(true); return; } const voxSettings: VoxSettings = { negativePrompt, activeStyles: Array.from(activeStyles), detailIntensity, aspectRatio: selectedAspectRatio }; const newHistoryItem: HistoryItem = { id: new Date().toISOString(), prompt: userPrompt, settings, images: thumbnail, timestamp: Date.now(), generationMode: mode, inputImage: currentImage?.base64, voxSettings, videoSrc: videoSrc ?? undefined }; addToHistory(newHistoryItem); setActiveHistoryItemId(newHistoryItem.id); };
+  const createAndStoreHistoryItem = (thumbnail: ImageInfo[], userPrompt: string, settings: ImageSettings, mode: GenerationMode, videoSrc: string | null = null, seed: number | null = null) => { if (history.length >= MAX_HISTORY_ITEMS) { setIsHistoryFullWarningVisible(true); return; } const voxSettings: VoxSettings = { negativePrompt, activeStyles: Array.from(activeStyles), detailIntensity, aspectRatio: selectedAspectRatio }; const newHistoryItem: HistoryItem = { id: new Date().toISOString(), prompt: userPrompt, settings, images: thumbnail, timestamp: Date.now(), generationMode: mode, inputImage: currentImage?.base64, voxSettings, videoSrc: videoSrc ?? undefined, seed: seed ?? undefined }; addToHistory(newHistoryItem); setActiveHistoryItemId(newHistoryItem.id); };
   // FIX: Replaced MAX_HISTORY_IMAGES with MAX_HISTORY_ITEMS to match the defined constant.
   const preGenerationCheck = () => { if (history.length >= MAX_HISTORY_ITEMS) { setIsHistoryFullWarningVisible(true); return false; } return true; }
 
@@ -324,16 +337,43 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
     if (!prompt.trim() || !preGenerationCheck()) return;
     saveStateForUndo(); setIsLoading(true); setError(null); setCurrentVideoUrl(null); setConversationalResponse(null);
     try {
-      const finalPrompt = constructFinalPrompt(); let newImageSrc: string | null = null; let modelUsedForHistory: GenerationModel; let activeRatio: AspectRatio = getActiveAspectRatio();
+      const finalPrompt = constructFinalPrompt();
+      const inputSeed = seed ? parseInt(seed, 10) : undefined;
+      let generationResult: { images: string[]; seed: number };
+      let modelUsedForHistory: GenerationModel;
+      let activeRatio: AspectRatio = getActiveAspectRatio();
+      
       if (currentImage) {
-        modelUsedForHistory = 'gemini-2.5-flash-image-preview'; const masterPrompt = t('gemini_editImage_masterPrompt', { prompt: finalPrompt }); const editedImages = await editImageFromPrompt(masterPrompt, currentImage.base64, currentImage.mimeType); if (editedImages.length > 0) newImageSrc = editedImages[0];
+        modelUsedForHistory = 'gemini-2.5-flash-image-preview';
+        const masterPrompt = t('gemini_editImage_masterPrompt', { prompt: finalPrompt });
+        generationResult = await editImageFromPrompt(masterPrompt, currentImage.base64, currentImage.mimeType, inputSeed);
       } else {
-        modelUsedForHistory = selectedModel; const settings: ImageSettings = { model: selectedModel, numberOfImages: 1, aspectRatio: activeRatio }; const vxdlUltraSystemInstruction = selectedModel === 'gemini-2.5-flash-image-preview' ? t('gemini_vxdlUltra_systemInstruction') : undefined; const aspectRatioTextTemplate = t('gemini_aspectRatio_text'); const generatedImages = await generateImagesFromPrompt(finalPrompt, settings, vxdlUltraSystemInstruction, aspectRatioTextTemplate); if (generatedImages.length > 0) { newImageSrc = generatedImages[0]; setSelectedAspectRatio(activeRatio); }
+        modelUsedForHistory = selectedModel;
+        const settings: ImageSettings = { model: selectedModel, numberOfImages: 1, aspectRatio: activeRatio };
+        const vxdlUltraSystemInstruction = selectedModel === 'gemini-2.5-flash-image-preview' ? t('gemini_vxdlUltra_systemInstruction') : undefined;
+        const aspectRatioTextTemplate = t('gemini_aspectRatio_text');
+        generationResult = await generateImagesFromPrompt(finalPrompt, settings, vxdlUltraSystemInstruction, aspectRatioTextTemplate, inputSeed);
+        setSelectedAspectRatio(activeRatio);
       }
+
+      const newImageSrc = generationResult.images.length > 0 ? generationResult.images[0] : null;
+
       if (newImageSrc) {
-        handleMediaSuccess(newImageSrc); const imageInfo: ImageInfo = { src: newImageSrc, isRefined: false }; createAndStoreHistoryItem([imageInfo], prompt, { model: modelUsedForHistory, numberOfImages: 1, aspectRatio: activeRatio }, currentImage ? 'image-to-image' : 'text-to-image'); updateTokenUsage(currentImage ? 350 : 250);
-        if (currentImage) { const mimeType = newImageSrc.substring(newImageSrc.indexOf(':') + 1, newImageSrc.indexOf(';')); setCurrentImage({ base64: newImageSrc, mimeType }); setPrompt(''); } else { setCurrentImage(null); }
-      } else { throw new Error("The model did not return an image. Please try a different prompt."); }
+        setLastSeed(generationResult.seed);
+        handleMediaSuccess(newImageSrc);
+        const imageInfo: ImageInfo = { src: newImageSrc, isRefined: false };
+        createAndStoreHistoryItem([imageInfo], prompt, { model: modelUsedForHistory, numberOfImages: 1, aspectRatio: activeRatio }, currentImage ? 'image-to-image' : 'text-to-image', null, generationResult.seed);
+        updateTokenUsage(currentImage ? 350 : 250);
+        if (currentImage) {
+            const mimeType = newImageSrc.substring(newImageSrc.indexOf(':') + 1, newImageSrc.indexOf(';'));
+            setCurrentImage({ base64: newImageSrc, mimeType });
+            setPrompt('');
+        } else {
+            setCurrentImage(null);
+        }
+      } else {
+          throw new Error("The model did not return an image. Please try a different prompt.");
+      }
     } catch (err) { 
         if (err instanceof Error) {
             if (err.message.startsWith('Model refusal: ')) {
@@ -406,7 +446,7 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
             setUploadedImages([]); 
             setSelectedIndices(new Set()); 
         } else { 
-            throw new Error("The model could not combine the images."); 
+            throw new Error("The model did not combine the images."); 
         } 
     } catch (err) { 
         if (err instanceof Error) {
@@ -442,6 +482,8 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
     setIsTokenUsageVisible(false);
     clearAutoSave();
     setCurrentVideoUrl(null);
+    setSeed('');
+    setLastSeed(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -497,24 +539,27 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
     }
   };
 
-  const handleUpscale = async (resolution: UpscaleResolution) => { 
-    setIsUpscalePanelOpen(false); 
-    const imageToUpscale = currentImage?.base64 || (isBg1Active ? bgUrl1 : bgUrl2); 
-    if (!imageToUpscale || !activeHistoryItemId) { setError("No active image to upscale."); return; } 
-    saveStateForUndo(); 
-    setIsUpscaling(true); 
+  const handleUpscale = async (resolution: UpscaleResolution) => {
+    setIsUpscalePanelOpen(false);
+    const imageToUpscale = currentImage?.base64 || (isBg1Active ? bgUrl1 : bgUrl2);
+    if (!imageToUpscale || !activeHistoryItemId) {
+        setError("No active image to upscale.");
+        return;
+    }
+    saveStateForUndo();
+    setIsUpscaling(true);
     setError(null);
     setConversationalResponse(null);
-    try { 
-        const upscalePrompt = resolution === '2K' ? t('gemini_upscale_2K_prompt') : t('gemini_upscale_4K_prompt'); 
-        const upscaledImageSrc = await upscaleImage(imageToUpscale, resolution, upscalePrompt); 
-        handleMediaSuccess(upscaledImageSrc); 
-        const mimeType = upscaledImageSrc.substring(upscaledImageSrc.indexOf(':') + 1, upscaledImageSrc.indexOf(';')); 
-        setCurrentImage({ base64: upscaledImageSrc, mimeType: mimeType }); 
-        const updatedImageInfo: ImageInfo = { src: upscaledImageSrc, upscaledTo: resolution, isRefined: false }; 
-        updateHistoryItem(activeHistoryItemId, [updatedImageInfo]); 
-        updateTokenUsage(150); 
-    } catch (err) { 
+    try {
+        const upscalePrompt = resolution === '2x' ? t('gemini_upscale_2x_prompt') : t('gemini_upscale_4x_prompt');
+        const upscaledImageSrc = await upscaleImage(imageToUpscale, resolution, upscalePrompt);
+        handleMediaSuccess(upscaledImageSrc);
+        const mimeType = upscaledImageSrc.substring(upscaledImageSrc.indexOf(':') + 1, upscaledImageSrc.indexOf(';'));
+        setCurrentImage({ base64: upscaledImageSrc, mimeType: mimeType });
+        const updatedImageInfo: ImageInfo = { src: upscaledImageSrc, upscaledTo: resolution, isRefined: false };
+        updateHistoryItem(activeHistoryItemId, [updatedImageInfo]);
+        updateTokenUsage(150);
+    } catch (err) {
         if (err instanceof Error) {
             if (err.message.startsWith('Model refusal: ')) {
                 setConversationalResponse(err.message.replace('Model refusal: ', ''));
@@ -524,9 +569,9 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
         } else {
             setError('An unexpected error occurred.');
         }
-    } finally { 
-        setIsUpscaling(false); 
-    } 
+    } finally {
+        setIsUpscaling(false);
+    }
   };
 
   const handleSurpriseMe = async () => { 
@@ -643,6 +688,13 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
       setPrompt(item.prompt); 
       setSelectedModel(item.settings.model || 'vxdl-1-fused'); 
       setActiveHistoryItemId(item.id); 
+      if (item.seed) {
+        setLastSeed(item.seed);
+        setSeed(String(item.seed));
+      } else {
+        setLastSeed(null);
+        setSeed('');
+      }
       if (item.voxSettings) { 
           setNegativePrompt(item.voxSettings.negativePrompt || ''); 
           setActiveStyles(new Set(item.voxSettings.activeStyles || [])); 
@@ -1032,6 +1084,44 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
             setIsPromptEditorOpen(true);
         }
     };
+    
+    const handleGenerateVxog = async () => {
+        const sourceImage = currentImage?.base64 || (isBg1Active ? bgUrl1 : bgUrl2);
+        if (!sourceImage || isBusy) return;
+        
+        saveStateForUndo();
+        setIsGeneratingVxog(true);
+        setError(null);
+        setConversationalResponse(null);
+        
+        try {
+          const instruction = t('gemini_vxog_instruction');
+          const result = await generateVisualPromptFromImage(sourceImage, instruction);
+          setVxogPrompt(result);
+          updateTokenUsage(150); // Estimate
+        } catch (err) {
+            if (err instanceof Error) {
+                if (err.message.startsWith('Model refusal: ')) {
+                    setConversationalResponse(err.message.replace('Model refusal: ', ''));
+                } else {
+                    setError(err.message);
+                }
+            } else {
+                setError('An unexpected error occurred during VXOG generation.');
+            }
+        } finally {
+          setIsGeneratingVxog(false);
+        }
+    };
+
+    const handleCopySeed = () => {
+        if (!lastSeed || isSeedCopied) return;
+        navigator.clipboard.writeText(String(lastSeed)).then(() => {
+          setIsSeedCopied(true);
+          setTimeout(() => setIsSeedCopied(false), 2000);
+        });
+    };
+
 
   const hasMedia = bgUrl1 || bgUrl2 || currentVideoUrl;
   const operationMode = selectedIndices.size >= 2 ? 'combine' : currentImage ? 'edit' : 'generate';
@@ -1040,7 +1130,7 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
   const currentModelName = AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name || selectedModel;
   const placeholderText = operationMode === 'combine' ? t('promptCombinePlaceholder', { count: selectedIndices.size }) : operationMode === 'edit' ? t('promptEditPlaceholder') : t('promptVisionPlaceholder');
   const buttonTitle = operationMode === 'combine' ? t('buttonCombine', { count: selectedIndices.size }) : operationMode === 'edit' ? t('buttonRemix') : t('buttonGenerate');
-  const isBusy = isLoading || isUpscaling || isGeneratingPrompt || isGeneratingVariations || isReframing || isVideoLoading || isChangingViewpoint || isAnalyzingScene || isAnalyzingStyle || isSuggestingNegatives || isInpaintingLoading;
+  const isBusy = isLoading || isUpscaling || isGeneratingPrompt || isGeneratingVariations || isReframing || isVideoLoading || isChangingViewpoint || isAnalyzingScene || isAnalyzingStyle || isSuggestingNegatives || isInpaintingLoading || isGeneratingVxog;
   const imageTransformStyle = { 
       transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, 
       transition: isPanning || is360View ? 'none' : 'transform 0.1s ease-out',
@@ -1062,6 +1152,38 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
       {autoSaveState && ( <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] animate-fade-in"><div className="bg-gray-950/80 border border-white/10 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 animate-fade-in-up"><h3 className="text-2xl font-bold text-cyan-400">{t('unsavedSessionTitle')}</h3><p className="mt-4 text-gray-300">{t('unsavedSessionBody')}</p><div className="mt-8 flex justify-end gap-4"><button onClick={() => clearAutoSave()} className="text-gray-400 font-semibold py-2 px-6 rounded-lg hover:text-white transition-colors">{t('discard')}</button><button onClick={handleRestoreSession} className="bg-white text-black font-semibold py-2 px-6 rounded-lg shadow-sm hover:shadow-md hover:shadow-white/10 transition-all">{t('restore')}</button></div></div></div> )}
       {isHistoryFullWarningVisible && ( <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fade-in"><div className="bg-gray-950/80 border border-white/10 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 animate-fade-in-up"><h3 className="text-2xl font-bold text-amber-400">{t('historyFullTitle')}</h3><p className="mt-4 text-base text-gray-300">{t('historyFullBody', { count: MAX_HISTORY_ITEMS })}</p><p className="mt-2 text-base text-gray-400">{t('historyFullAction')}</p><div className="mt-8 text-center"><button onClick={() => { setIsHistoryFullWarningVisible(false); setIsHistoryOpen(true); }} className="bg-white text-black font-semibold py-2 px-8 rounded-lg shadow-sm hover:shadow-md hover:shadow-white/10 transition-all">{t('manageHistory')}</button></div></div></div> )}
       {isVideoLoading && ( <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-[60] animate-fade-in"><Spinner /><p className="mt-4 text-xl font-semibold text-white text-center max-w-md">{videoLoadingMessage}</p></div> )}
+        
+      {vxogPrompt && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fade-in" onClick={() => setVxogPrompt(null)}>
+          <div className="bg-gray-950/80 border border-white/10 rounded-2xl p-6 w-full max-w-2xl mx-4 animate-fade-in-up flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-bold text-white">{t('vxogModalTitle')}</h2>
+              <button onClick={() => setVxogPrompt(null)} className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-full transition-colors" title={t('kbClose')}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="bg-black/30 p-4 rounded-lg overflow-y-auto no-scrollbar flex-grow">
+              <p className="text-base text-gray-300 font-mono selectable-text leading-relaxed break-words">
+                {vxogPrompt}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-4 flex-shrink-0">
+               <button 
+                  onClick={() => {
+                    if (vxogPrompt) navigator.clipboard.writeText(vxogPrompt);
+                    setIsVxogCopied(true);
+                    setTimeout(() => setIsVxogCopied(false), 2000);
+                  }}
+                  className="text-gray-300 font-semibold py-2 px-6 rounded-lg hover:text-white transition-colors bg-white/10">
+                  {isVxogCopied ? t('prompt_copied') : t('prompt_copy')}
+                </button>
+               <button onClick={() => { if (vxogPrompt) setPrompt(vxogPrompt); setVxogPrompt(null); }} className="bg-white text-black font-semibold py-2 px-6 rounded-lg shadow-sm hover:shadow-md hover:shadow-white/10 transition-all">
+                {t('useAsPrompt')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {is360View && (
         <>
@@ -1146,30 +1268,56 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
       )}
 
       {currentVideoUrl && ( <div className="fixed inset-0 z-[25] flex items-center justify-center bg-black p-4 animate-fade-in"><video key={currentVideoUrl} src={currentVideoUrl} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl" onLoadedData={handleVideoLoaded} /></div> )}
-      {hasMedia && imageDimensions && ( <div className="fixed z-30 top-4 left-4 bg-black/50 backdrop-blur-md text-white text-xs font-mono rounded px-2 py-1 animate-fade-in pointer-events-none">{imageDimensions.width} x {imageDimensions.height}</div> )}
+      {(hasMedia && (imageDimensions || lastSeed)) && (
+        <div className="fixed z-30 top-4 left-4 flex flex-col items-start gap-1.5 pointer-events-auto">
+            {imageDimensions && (
+                <div className="bg-black/50 backdrop-blur-md text-white text-xs font-mono rounded px-2 py-1 animate-fade-in">
+                    {imageDimensions.width} x {imageDimensions.height}
+                </div>
+            )}
+            {lastSeed && (
+                <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md text-white text-xs font-mono rounded px-2 py-1 animate-fade-in">
+                    <span>Seed: {lastSeed}</span>
+                    <button
+                        onClick={handleCopySeed}
+                        className="text-gray-400 hover:text-white"
+                        title={isSeedCopied ? "Copied!" : "Copy seed"}
+                    >
+                        {isSeedCopied ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" /><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" /></svg>
+                        )}
+                    </button>
+                </div>
+            )}
+        </div>
+      )}
       {hasMedia && !currentVideoUrl && ( <div className="fixed z-[35] top-4 right-4 flex flex-col items-end gap-2 animate-fade-in"><div className="relative"><button onClick={() => setIsZoomPanelOpen(p => !p)} className="h-10 w-10 flex items-center justify-center bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 hover:text-white transition-colors" title={t('zoomControls')}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg></button>{isZoomPanelOpen && (<div className="absolute top-0 right-12 flex items-center gap-3 bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10 animate-fade-in"><div className="flex flex-col items-center gap-1"><label className="text-white text-xs font-mono">{Math.round(transform.scale * 100)}%</label><input type="range" min="0.5" max="10" step="0.01" value={transform.scale} onChange={(e) => handleZoomSliderChange(parseFloat(e.target.value))} className="w-24 h-1 appearance-none bg-gray-600 rounded-full cursor-pointer accent-white" title={t('zoomLevel')} /></div><div className="flex flex-col gap-1"><button onClick={() => handleZoom('in')} className="h-8 w-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors" title={t('zoomIn')}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg></button><button onClick={resetTransform} className="h-8 w-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors" title={t('resetView')}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C3.732 4.943 9.522 3 10 3s6.268 1.943 9.542 7c-3.274 5.057-9.064 7-9.542 7S3.732 15.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg></button><button onClick={() => handleZoom('out')} className="h-8 w-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors" title={t('zoomOut')}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg></button></div></div>)}</div></div> )}
 
       {isUploadNoticeVisible && !hasMedia && (
-        <div className="fixed bottom-4 left-4 z-40 max-w-sm w-full bg-gray-950/80 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl animate-fade-in-up pointer-events-auto">
-            <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 text-cyan-400 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <div className="flex-1">
-                    <h4 className="font-bold text-white text-lg">{t('vox_upload_notice_title')}</h4>
-                    <ul className="mt-2 text-sm text-gray-300 space-y-1">
-                        <li dangerouslySetInnerHTML={{ __html: t('vox_upload_notice_single') }}></li>
-                        <li dangerouslySetInnerHTML={{ __html: t('vox_upload_notice_multiple') }}></li>
-                    </ul>
-                </div>
-                <button onClick={handleDismissUploadNotice} className="-mt-2 -mr-2 p-1.5 text-gray-500 hover:text-white rounded-full hover:bg-white/10 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                </button>
-            </div>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 pointer-events-none">
+          <div className="max-w-sm w-full bg-gray-950/80 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl animate-fade-in-up pointer-events-auto">
+              <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 text-cyan-400 mt-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                  </div>
+                  <div className="flex-1">
+                      <h4 className="font-bold text-white text-lg">{t('vox_upload_notice_title')}</h4>
+                      <ul className="mt-2 text-sm text-gray-300 space-y-1">
+                          <li dangerouslySetInnerHTML={{ __html: t('vox_upload_notice_single') }}></li>
+                          <li dangerouslySetInnerHTML={{ __html: t('vox_upload_notice_multiple') }}></li>
+                      </ul>
+                  </div>
+                  <button onClick={handleDismissUploadNotice} className="-mt-2 -mr-2 p-1.5 text-gray-500 hover:text-white rounded-full hover:bg-white/10 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                  </button>
+              </div>
+          </div>
         </div>
       )}
 
@@ -1186,6 +1334,18 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
                                 <input type="text" id="negative-prompt" value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)} className="w-full bg-white/10 border border-white/20 rounded-lg p-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-white/80" placeholder={t('negativePromptPlaceholder')} />
                                 <button onClick={handleSuggestNegatives} disabled={isBusy || !prompt.trim()} className="p-2 bg-white/10 rounded-lg text-white/70 hover:bg-white/20 hover:text-white transition-colors disabled:opacity-50" title={t('suggest')}>{isSuggestingNegatives ? <SmallSpinner/> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 2a1 1 0 00-1 1v1.586l-2.707 2.707a1 1 0 000 1.414l4 4a1 1 0 001.414 0l4-4a1 1 0 000-1.414L8.414 4.586V3a1 1 0 00-1-1H5zM2 12a1 1 0 011-1h1.586l2.707-2.707a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0L4.586 13H3a1 1 0 01-1-1zm15 3a1 1 0 00-1-1h-1.586l-2.707 2.707a1 1 0 000 1.414l4 4a1 1 0 001.414 0l4-4a1 1 0 000-1.414L15.414 16H17a1 1 0 001-1z" clipRule="evenodd" /></svg>}</button>
                             </div>
+                        </div>
+                        <div>
+                            <label htmlFor="seed-input" className="block text-sm font-medium text-gray-300 mb-2">Seed</label>
+                            <input
+                                id="seed-input"
+                                type="text"
+                                value={seed}
+                                onChange={e => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+                                className="w-full bg-white/10 border border-white/20 rounded-lg p-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-white/80"
+                                placeholder="Random if empty"
+                                disabled={isBusy}
+                            />
                         </div>
                         <div><label htmlFor="detail-intensity" className="block text-sm font-medium text-gray-300 mb-2">{t('detailIntensity')} ({detailIntensity})</label><input id="detail-intensity" type="range" min="1" max="5" step="1" value={detailIntensity} onChange={e => setDetailIntensity(parseInt(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-white" /></div><div><p className="text-sm font-medium text-gray-300 mb-2">{t('artisticStyles')}</p><div className="flex flex-wrap gap-2">{STYLE_PRESETS.map(style => (<button key={style.name} onClick={() => handleToggleStyle(style.name)} className={`px-3 py-1 text-xs rounded-full border transition-colors ${activeStyles.has(style.name) ? 'bg-white text-black border-white' : 'bg-white/10 text-gray-300 border-white/20 hover:bg-white/20'}`}>{style.name}</button>))}</div></div>
                         <div>
@@ -1209,9 +1369,10 @@ function VoxPage({ history, addToHistory, updateHistoryItem, clearHistory, delet
                            <button onClick={handleRedo} disabled={isBusy || redoStack.length === 0} className={actionButtonClasses}>{t('redo')}</button>
                            <button onClick={handleSurpriseMe} disabled={isBusy} className={actionButtonClasses}>{isGeneratingPrompt ? <SmallSpinner /> : t('surpriseMe')}</button>
                            {hasMedia && <button onClick={handleAnalyzeScene} disabled={isBusy} className={actionButtonClasses}>{isAnalyzingScene ? <SmallSpinner /> : t('analyzeScene')}</button>}
+                           {hasMedia && <button onClick={handleGenerateVxog} disabled={isBusy} className={actionButtonClasses} title={t('vxogTooltip')}>{isGeneratingVxog ? <SmallSpinner /> : t('vxog')}</button>}
                            {hasMedia && <button onClick={handleGenerateVariations} disabled={isBusy} className={actionButtonClasses}>{isGeneratingVariations ? <SmallSpinner /> : t('variations')}</button>}
                            {hasMedia && !currentVideoUrl && <button onClick={enterInpaintingMode} disabled={isBusy} className={actionButtonClasses}>{t('inpaint')}</button>}
-                           {hasMedia && !currentVideoUrl && (<div ref={upscalePanelRef} className="relative"><button onClick={() => setIsUpscalePanelOpen(p => !p)} disabled={isBusy || currentImageInfo?.upscaledTo === '4K'} className={actionButtonClasses + ' w-full'}>{isUpscaling ? <SmallSpinner /> : (currentImageInfo?.upscaledTo ? `${t('upscaled')} ${currentImageInfo.upscaledTo}` : t('upscale'))}</button>{isUpscalePanelOpen && (<div className="absolute bottom-full mb-2 w-full grid grid-cols-1 gap-1 bg-black/80 backdrop-blur-md border border-white/20 rounded-lg p-1 animate-fade-in-up origin-bottom"><button onClick={() => handleUpscale('2K')} className="px-2 py-1.5 text-sm text-center rounded-md transition-colors bg-white/10 text-gray-300 hover:bg-white/20">{t('upscale2K')}</button><button onClick={() => handleUpscale('4K')} className="px-2 py-1.5 text-sm text-center rounded-md transition-colors bg-white/10 text-gray-300 hover:bg-white/20">{t('upscale4K')}</button></div>)}</div>)}
+                           {hasMedia && !currentVideoUrl && (<div ref={upscalePanelRef} className="relative"><button onClick={() => setIsUpscalePanelOpen(p => !p)} disabled={isBusy || currentImageInfo?.upscaledTo === '4x'} className={actionButtonClasses + ' w-full'}>{isUpscaling ? <SmallSpinner /> : (currentImageInfo?.upscaledTo ? `${t('upscaled')} ${currentImageInfo.upscaledTo}` : t('vxeye'))}</button>{isUpscalePanelOpen && (<div className="absolute bottom-full mb-2 w-full grid grid-cols-1 gap-1 bg-black/80 backdrop-blur-md border border-white/20 rounded-lg p-1 animate-fade-in-up origin-bottom">{currentImageInfo?.upscaledTo !== '2x' && <button onClick={() => handleUpscale('2x')} className="px-2 py-1.5 text-sm text-center rounded-md transition-colors bg-white/10 text-gray-300 hover:bg-white/20">{t('upscale2x')}</button>}<button onClick={() => handleUpscale('4x')} className="px-2 py-1.5 text-sm text-center rounded-md transition-colors bg-white/10 text-gray-300 hover:bg-white/20">{t('upscale4x')}</button></div>)}</div>)}
                            {hasMedia && !currentVideoUrl && (<div ref={reframePanelRef} className="relative"><button onClick={() => setIsReframePanelOpen(p => !p)} disabled={isBusy} className={actionButtonClasses + ' w-full'}>{isReframing ? <SmallSpinner/> : t('reframe')}</button>{isReframePanelOpen && (<div className="absolute bottom-full mb-2 w-full grid grid-cols-3 gap-1 bg-black/80 backdrop-blur-md border border-white/20 rounded-lg p-1 animate-fade-in-up origin-bottom">{ASPECT_RATIOS.map(ratio => (<button key={ratio} onClick={() => handleReframe(ratio)} className="px-2 py-1 text-xs text-center rounded-md transition-colors bg-white/10 text-gray-300 hover:bg-white/20">{ratio}</button>))}</div>)}</div>)}
                            {hasMedia && !currentVideoUrl && <button onClick={toggle360View} className={`${actionButtonClasses} ${is360View ? 'bg-cyan-500/20 text-cyan-400' : ''}`}>{t('view360')}</button>}
                            <button onClick={() => setIsHistoryOpen(true)} disabled={isBusy} className={actionButtonClasses}>{t('history')}</button>

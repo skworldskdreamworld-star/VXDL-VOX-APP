@@ -14,17 +14,18 @@ function PromptEditorModal({ isOpen, onClose, prompt, setPrompt }: PromptEditorM
 
   useEffect(() => {
     if (isOpen) {
-      // Focus the textarea and move cursor to the end when the modal opens
+      // Focus the textarea and move cursor to the end when the modal opens.
+      // This should only run when the modal's `isOpen` state changes from false to true.
       const textarea = textareaRef.current;
       if (textarea) {
         textarea.focus();
-        // Use a timeout to ensure the focus happens after the modal is fully rendered
+        // Use a timeout to ensure the focus and selection happen after the modal is fully rendered.
         setTimeout(() => {
             textarea.setSelectionRange(prompt.length, prompt.length);
         }, 0);
       }
     }
-  }, [isOpen, prompt.length]);
+  }, [isOpen]); // FIX: Removed `prompt.length` from the dependency array. This prevents the cursor from jumping to the end on every keystroke or click inside the textarea.
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

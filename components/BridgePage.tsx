@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { AppView, User } from '../types';
 import { useTranslations } from '../hooks/useTranslations';
 import LanguageSelector from './LanguageSelector';
+import KnowledgeBaseModal from './KnowledgeBaseModal';
 
 const VxdlIcon = () => (
     <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 md:w-16 md:h-16 mb-4">
@@ -20,6 +21,20 @@ const VoxIcon = () => (
         <path d="M32 64V34" stroke="currentColor" strokeWidth="2"/>
         <path d="M18 11.5L18 41.5" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.5"/>
         <path d="M46 11.5L46 41.5" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.5"/>
+    </svg>
+);
+
+const VxogIcon = () => (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 md:w-16 md:h-16 mb-4">
+        <path d="M22 24L32 17L42 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M22 40L32 47L42 40" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M32 17V47" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M12 29V35" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M52 29V35" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M42 24L52 29" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M12 29L22 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M42 40L52 35" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M12 35L22 40" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
 );
 
@@ -59,19 +74,20 @@ interface BridgePageProps {
 function BridgePage({ onSelectView, user, onGoToStart }: BridgePageProps) {
   const { t } = useTranslations();
   const [exitingTo, setExitingTo] = useState<AppView | null>(null);
+  const [isKbOpen, setIsKbOpen] = useState(false);
 
   const choices: Choice[] = useMemo(() => [
-    {
-      id: 'vxdl',
-      name: t('bridge_vxdl_name'),
-      description: t('bridge_vxdl_description'),
-      icon: VxdlIcon
-    },
     {
       id: 'vox',
       name: t('bridge_vox_name'),
       description: t('bridge_vox_description'),
       icon: VoxIcon
+    },
+    {
+      id: 'vxog',
+      name: t('bridge_vxog_name'),
+      description: t('bridge_vxog_description'),
+      icon: VxogIcon
     },
     {
       id: 'cos',
@@ -96,85 +112,98 @@ function BridgePage({ onSelectView, user, onGoToStart }: BridgePageProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
+    <>
+      <div className="fixed inset-0 z-30 flex flex-col items-center justify-center p-4">
+        <button
+          onClick={onGoToStart}
+          className="absolute top-4 left-4 z-20 p-2 text-gray-400 hover:text-white transition-colors duration-200"
+          title="Back to Start Page"
+          aria-label="Back to Start Page"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+
+        <LanguageSelector />
+
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+          {choices.map((choice, index) => {
+            const Icon = choice.icon;
+            const isSelected = exitingTo === choice.id;
+            const isExiting = exitingTo !== null;
+
+            let animationClass = 'animate-fade-in-up';
+            if (isExiting) {
+              if (isSelected) {
+                animationClass = 'animate-flow-up';
+              } else {
+                animationClass = 'animate-fade-out-and-scale';
+              }
+            }
+
+            return (
+              <div
+                key={choice.id}
+                className={`
+                  relative group
+                  w-full max-w-xs md:w-64 lg:w-72
+                  ${animationClass}
+                `}
+                style={{ animationDelay: isExiting ? '0ms' : `${150 * (index + 1)}ms` }}
+              >
+                {/* Glow effect for border on hover */}
+                <div className="absolute -inset-px bg-gradient-to-r from-cyan-400 to-purple-500 rounded-2xl blur-lg opacity-0 group-hover:opacity-70 transition duration-500 pointer-events-none"></div>
+
+                <button
+                  onClick={() => handleSelect(choice.id)}
+                  disabled={isExiting}
+                  className={`
+                    relative w-full h-full
+                    bg-black/30 backdrop-blur-xl
+                    border border-white/10 rounded-2xl
+                    p-6 md:p-8 text-center text-white
+                    flex flex-col items-center
+                    transition-all duration-300 ease-in-out
+                    transform group-hover:-translate-y-2 group-hover:bg-black/40
+                    focus:outline-none focus:ring-4 focus:ring-cyan-400/50
+                    overflow-hidden
+                  `}
+                >
+                  {/* Top spotlight sheen on hover */}
+                  <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+
+                  {/* Content wrapper */}
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="text-cyan-400 group-hover:text-white group-hover:scale-110 transition-all duration-300">
+                      <Icon />
+                    </div>
+                    <h3 className="text-2xl md:text-3xl font-bold mb-2 tracking-tight">{choice.name}</h3>
+                    {(choice.id === 'vox' || choice.id === 'cos' || choice.id === 'vxog') && user?.type === 'member' && (
+                      <span className="mb-3 px-3 py-1 text-xs font-bold rounded-full tracking-wider bg-cyan-600 text-white animate-fade-in">
+                          {t('member_tag')}
+                      </span>
+                    )}
+                    <p className="text-sm md:text-base text-gray-400">{choice.description}</p>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
       <button
-        onClick={onGoToStart}
-        className="absolute top-4 left-4 z-20 p-2 text-gray-400 hover:text-white transition-colors duration-200"
-        title="Back to Start Page"
-        aria-label="Back to Start Page"
+          onClick={() => setIsKbOpen(true)}
+          className="fixed top-1/2 right-0 -translate-y-1/2 bg-cyan-500/80 backdrop-blur-md text-white font-bold py-3 pl-4 pr-5 rounded-l-full shadow-lg hover:bg-cyan-500 transition-all duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-cyan-400/50 animate-slide-in-from-right opacity-0 z-40"
+          style={{ animationDelay: '1.2s' }}
+          title="Get help with workflows"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-        </svg>
+          Ask VXOG VOX
       </button>
 
-      <LanguageSelector />
-
-      <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-        {choices.map((choice, index) => {
-          const Icon = choice.icon;
-          const isSelected = exitingTo === choice.id;
-          const isExiting = exitingTo !== null;
-
-          let animationClass = 'animate-fade-in-up';
-          if (isExiting) {
-            if (isSelected) {
-              animationClass = 'animate-flow-up';
-            } else {
-              animationClass = 'animate-fade-out-and-scale';
-            }
-          }
-
-          return (
-            <div
-              key={choice.id}
-              className={`
-                relative group
-                w-full max-w-xs md:w-64 lg:w-72
-                ${animationClass}
-              `}
-              style={{ animationDelay: isExiting ? '0ms' : `${150 * (index + 1)}ms` }}
-            >
-              {/* Glow effect for border on hover */}
-              <div className="absolute -inset-px bg-gradient-to-r from-cyan-400 to-purple-500 rounded-2xl blur-lg opacity-0 group-hover:opacity-70 transition duration-500 pointer-events-none"></div>
-
-              <button
-                onClick={() => handleSelect(choice.id)}
-                disabled={isExiting}
-                className={`
-                  relative w-full h-full
-                  bg-black/30 backdrop-blur-xl
-                  border border-white/10 rounded-2xl
-                  p-6 md:p-8 text-center text-white
-                  flex flex-col items-center
-                  transition-all duration-300 ease-in-out
-                  transform group-hover:-translate-y-2 group-hover:bg-black/40
-                  focus:outline-none focus:ring-4 focus:ring-cyan-400/50
-                  overflow-hidden
-                `}
-              >
-                {/* Top spotlight sheen on hover */}
-                <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
-
-                {/* Content wrapper */}
-                <div className="relative z-10 flex flex-col items-center">
-                  <div className="text-cyan-400 group-hover:text-white group-hover:scale-110 transition-all duration-300">
-                    <Icon />
-                  </div>
-                  <h3 className="text-2xl md:text-3xl font-bold mb-2 tracking-tight">{choice.name}</h3>
-                  {(choice.id === 'vox' || choice.id === 'cos') && user?.type === 'member' && (
-                    <span className="mb-3 px-3 py-1 text-xs font-bold rounded-full tracking-wider bg-cyan-600 text-white animate-fade-in">
-                        {t('member_tag')}
-                    </span>
-                  )}
-                  <p className="text-sm md:text-base text-gray-400">{choice.description}</p>
-                </div>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      <KnowledgeBaseModal isOpen={isKbOpen} onClose={() => setIsKbOpen(false)} />
+    </>
   );
 }
 

@@ -104,6 +104,7 @@ export default function App({ history, addToHistory, updateHistoryItem, clearHis
 
     try {
       let images: string[] = [];
+      let seed: number | undefined;
       let newHistoryItem: HistoryItem;
 
       if (generationMode === 'text-to-image') {
@@ -114,11 +115,21 @@ export default function App({ history, addToHistory, updateHistoryItem, clearHis
         }
         const vxdlUltraSystemInstruction = settings.model === 'gemini-2.5-flash-image-preview' ? t('gemini_vxdlUltra_systemInstruction') : undefined;
         const aspectRatioTextTemplate = t('gemini_aspectRatio_text');
-        images = await generateImagesFromPrompt(finalPrompt, settings, vxdlUltraSystemInstruction, aspectRatioTextTemplate);
+        // FIX: Correctly handle the object returned by `generateImagesFromPrompt`.
+        // The service returns an object `{ images: string[], seed: number }`, not just a string array.
+        // This destructuring fixes the type error.
+        const { images: resultImages, seed: resultSeed } = await generateImagesFromPrompt(finalPrompt, settings, vxdlUltraSystemInstruction, aspectRatioTextTemplate);
+        images = resultImages;
+        seed = resultSeed;
       } else { // image-to-image
         if (!inputImage) throw new Error("Input image is missing.");
         const masterPrompt = t('gemini_editImage_masterPrompt', { prompt });
-        images = await editImageFromPrompt(masterPrompt, inputImage.base64, inputImage.mimeType);
+        // FIX: Correctly handle the object returned by `editImageFromPrompt`.
+        // The service returns an object `{ images: string[], seed: number }`, not just a string array.
+        // This destructuring fixes the type error.
+        const { images: resultImages, seed: resultSeed } = await editImageFromPrompt(masterPrompt, inputImage.base64, inputImage.mimeType);
+        images = resultImages;
+        seed = resultSeed;
       }
       
       const imageInfos: ImageInfo[] = images.map(src => ({ src, isRefined: false }));
@@ -131,6 +142,7 @@ export default function App({ history, addToHistory, updateHistoryItem, clearHis
         timestamp: Date.now(),
         generationMode,
         inputImage: generationMode === 'image-to-image' ? inputImage?.base64 : undefined,
+        seed,
       };
       
       setGeneratedImages(imageInfos);
@@ -156,9 +168,9 @@ export default function App({ history, addToHistory, updateHistoryItem, clearHis
     
     try {
       const imageToUpscale = generatedImages[imageIndex];
-      const upscalePrompt = resolution === '2K' 
-        ? t('gemini_upscale_2K_prompt') 
-        : t('gemini_upscale_4K_prompt');
+      const upscalePrompt = resolution === '2x' 
+        ? t('gemini_upscale_2x_prompt') 
+        : t('gemini_upscale_4x_prompt');
       const upscaledImageSrc = await upscaleImage(imageToUpscale.src, resolution, upscalePrompt);
 
       const updatedImageInfo: ImageInfo = { ...imageToUpscale, src: upscaledImageSrc, upscaledTo: resolution };
